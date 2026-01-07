@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Data files (too large, regenerate-able)
+*.csv
+data/
+synthetic_investor_data_*.csv
+FINAL_PORTFOLIOS_*.csv
+portfolio_summary_stats*.csv
+
+# Models (large binary files)
+models/*.pkl
+*.pkl
+
+# Evaluation reports (regenerate-able)
+evaluation_reports/*.png
+evaluation_reports/*.json
+
+# Environment variables (contains secrets)
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Keep directory structure but ignore contents
+!data/.gitkeep
+!models/.gitkeep
+!evaluation_reports/.gitkeep
