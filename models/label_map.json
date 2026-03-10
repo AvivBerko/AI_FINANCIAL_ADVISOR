@@ -1,0 +1,13 @@
+{
+  "label_map": {
+    "Aggressive": 0,
+    "Conservative": 1,
+    "Moderate": 2
+  },
+  "inv_label_map": {
+    "0": "Aggressive",
+    "1": "Conservative",
+    "2": "Moderate"
+  },
+  "winner": "Random Forest"
+}
