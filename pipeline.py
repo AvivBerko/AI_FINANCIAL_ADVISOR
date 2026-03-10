@@ -48,7 +48,7 @@ def step_1_fetch_etf_data(skip=True):
     # Run the ETF fetcher script
     import subprocess
     result = subprocess.run(
-        ['python', 'src/etf_fetcher.py'],
+        [sys.executable, 'src/etf_fetcher.py'],
         capture_output=True,
         text=True
     )
@@ -117,7 +117,7 @@ def step_2_generate_investors():
     # Run the data generation script
     import subprocess
     result = subprocess.run(
-        ['python', 'src/data_generation.py'],
+        [sys.executable, 'src/data_generation.py'],
         capture_output=True,
         text=True
     )
