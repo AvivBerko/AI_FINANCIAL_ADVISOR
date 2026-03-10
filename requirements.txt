@@ -11,3 +11,5 @@ notebook>=7.0.0
 finnhub-python>=2.4.0
 python-dotenv>=1.0.0
 xgboost>=2.0.0
+streamlit>=1.30.0
+plotly>=5.18.0
