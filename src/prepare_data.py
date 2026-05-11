@@ -56,6 +56,16 @@ print(f"\nLoaded {len(etf_df)} ETFs and {len(investors_df)} investors")
 # ---------------------------------------------------------------------------
 # 1.5. Validate data
 # ---------------------------------------------------------------------------
+# Data-engineering layer.
+#
+# Validates the investor and ETF inputs before they enter the training
+# pipeline. It drops malformed investor rows, imputes missing ETF metrics
+# using per-asset-class medians (with a global-default fallback for small
+# classes), enforces an asset-class floor to prevent degenerate training
+# data, and produces a human-readable validation report saved to
+# data/validation_reports/. The implementation is covered by 24 unit tests
+# in tests/test_data_validation.py.
+# ---------------------------------------------------------------------------
 from datetime import datetime as _dt
 from src.data_validation import validate_etf_data, validate_investor_data
 
