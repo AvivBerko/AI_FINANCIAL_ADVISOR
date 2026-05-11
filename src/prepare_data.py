@@ -54,6 +54,28 @@ print(f"\nLoaded {len(etf_df)} ETFs and {len(investors_df)} investors")
 
 
 # ---------------------------------------------------------------------------
+# 1.5. Validate data
+# ---------------------------------------------------------------------------
+from datetime import datetime as _dt
+from src.data_validation import validate_etf_data, validate_investor_data
+
+print("\nRunning data validation...")
+etf_df,       etf_report = validate_etf_data(etf_df)
+investors_df, inv_report = validate_investor_data(investors_df)
+
+print(etf_report.to_markdown())
+print(inv_report.to_markdown())
+
+# Save reports for the academic record
+_ts = _dt.now().strftime('%Y%m%d%H%M%S')
+os.makedirs('data/validation_reports', exist_ok=True)
+with open(f'data/validation_reports/etf_{_ts}.md',      'w') as f: f.write(etf_report.to_markdown())
+with open(f'data/validation_reports/investor_{_ts}.md', 'w') as f: f.write(inv_report.to_markdown())
+
+print(f"\nValidation passed. After validation: {len(etf_df)} ETFs and {len(investors_df)} investors.")
+
+
+# ---------------------------------------------------------------------------
 # 2. Generate ground-truth labels via rule-based allocation pipeline
 # ---------------------------------------------------------------------------
 print("\nRunning allocation pipeline to generate labels...")
