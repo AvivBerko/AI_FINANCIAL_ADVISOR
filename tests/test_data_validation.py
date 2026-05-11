@@ -201,3 +201,42 @@ def test_etf_drops_missing_category():
     clean, rpt = validate_etf_data(df)
     assert rpt.n_dropped == 2
     assert rpt.dropped_reasons.get('missing_category') == 2
+
+
+def test_etf_imputes_nan_aum_with_class_median():
+    from src.data_validation import validate_etf_data
+    df = _make_good_etf_df()
+    # Equity class has 6 ETFs, AUM all 1e9. Make 1 NaN.
+    df.loc[0, 'Assets Under Management (AUM)'] = np.nan
+    clean, rpt = validate_etf_data(df)
+    assert rpt.n_dropped == 0
+    assert rpt.imputed.get('Assets Under Management (AUM)') == 1
+    imputed_value = clean.iloc[0]['Assets Under Management (AUM)']
+    assert imputed_value == 1e9  # class median
+    detail = [d for d in rpt.imputation_detail
+              if d['column'] == 'Assets Under Management (AUM)'][0]
+    assert detail['source'].startswith('class_median')
+
+
+def test_etf_imputes_negative_volatility_treated_as_bad():
+    from src.data_validation import validate_etf_data
+    df = _make_good_etf_df()
+    df.loc[0, 'Volatility (Annual STD)'] = -0.05
+    clean, rpt = validate_etf_data(df)
+    assert rpt.imputed.get('Volatility (Annual STD)') == 1
+    assert clean.iloc[0]['Volatility (Annual STD)'] > 0
+
+
+def test_etf_imputes_with_global_default_when_class_has_too_few_samples():
+    from src.data_validation import validate_etf_data
+    # Alternative class has only 1 ETF (GLD). If its AUM is bad, can't
+    # compute median (< 3 valid samples) — must use global default 1e9.
+    df = _make_good_etf_df()
+    gld_idx = df[df['Fund Symbol'] == 'GLD'].index[0]
+    df.loc[gld_idx, 'Assets Under Management (AUM)'] = np.nan
+    clean, rpt = validate_etf_data(df)
+    detail = [d for d in rpt.imputation_detail
+              if d['ticker'] == 'GLD'
+              and d['column'] == 'Assets Under Management (AUM)'][0]
+    assert detail['source'] == 'global_default'
+    assert detail['imputed'] == 1e9

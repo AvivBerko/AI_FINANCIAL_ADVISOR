@@ -223,7 +223,62 @@ def validate_etf_data(df: pd.DataFrame) -> tuple[pd.DataFrame, ValidationReport]
         rpt.dropped_reasons['missing_category'] = n_cat_bad
         work = work.loc[~cat_bad].copy()
 
-    # Imputation + asset-class floor will be added in subsequent tasks.
+    # Assign asset_class
+    work['_asset_class'] = work['Category'].apply(_map_to_asset_class)
+
+    # Detect unknown-category rows that silently fell to 'equity' default
+    unknown_mask = ~work['Category'].apply(_is_known_category)
+    if unknown_mask.any():
+        unknown_tickers = work.loc[unknown_mask, 'Fund Symbol'].tolist()
+        rpt.warnings.append(
+            f"{len(unknown_tickers)} ETF(s) with unknown category mapped to 'equity' by default: {unknown_tickers}"
+        )
+
+    # Per-class medians for impute columns. Compute over rows where value
+    # is valid (notna, positive, finite). If class has < 3 valid values,
+    # the per-class median is unreliable -> fall back to global default.
+    MIN_VALID_FOR_MEDIAN = 3
+    class_medians = {}  # {column: {class: median or None}}
+    for col in ETF_IMPUTE_COLUMNS:
+        as_num = pd.to_numeric(work[col], errors='coerce')
+        valid = as_num.notna() & np.isfinite(as_num) & (as_num > 0)
+        class_medians[col] = {}
+        for cls in work['_asset_class'].unique():
+            cls_mask = work['_asset_class'] == cls
+            valid_vals = as_num.loc[cls_mask & valid]
+            if len(valid_vals) >= MIN_VALID_FOR_MEDIAN:
+                class_medians[col][cls] = float(valid_vals.median())
+            else:
+                class_medians[col][cls] = None  # use global default
+
+    # Impute bad cells
+    for col, global_default in ETF_IMPUTE_COLUMNS.items():
+        as_num = pd.to_numeric(work[col], errors='coerce')
+        bad = ~(as_num.notna() & np.isfinite(as_num) & (as_num > 0))
+        if not bad.any():
+            continue
+        rpt.imputed[col] = int(bad.sum())
+        for idx in work.index[bad]:
+            cls = work.at[idx, '_asset_class']
+            class_med = class_medians[col].get(cls)
+            if class_med is not None:
+                imputed_val = class_med
+                source = f"class_median:{cls}"
+            else:
+                imputed_val = global_default
+                source = "global_default"
+            original = work.at[idx, col]
+            work.at[idx, col] = imputed_val
+            rpt.imputation_detail.append({
+                'ticker': work.at[idx, 'Fund Symbol'],
+                'column': col,
+                'original': None if pd.isna(original) else float(original),
+                'imputed': float(imputed_val),
+                'source': source,
+            })
+
+    # Drop the helper column before returning
+    work = work.drop(columns=['_asset_class'])
 
     rpt.n_output = len(work)
     rpt.n_dropped = rpt.n_input - rpt.n_output
