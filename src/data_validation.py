@@ -112,8 +112,43 @@ def validate_investor_data(df: pd.DataFrame) -> tuple[pd.DataFrame, ValidationRe
         rpt.critical_issues.append(f"Missing columns: {missing}")
         raise ValueError(f"Investor data missing required columns: {missing}")
 
-    # No row-level validation yet — placeholder, completed in Task 4.
-    clean = df.copy()
+    # Build a boolean mask of "rows to drop". Increment reason counts per check.
+    drop_mask = pd.Series(False, index=df.index)
+
+    # NaN in any feature column
+    nan_mask = df[INVESTOR_FEATURE_COLUMNS].isna().any(axis=1)
+    n_nan = int(nan_mask.sum())
+    if n_nan:
+        rpt.dropped_reasons['nan_in_feature'] = n_nan
+    drop_mask |= nan_mask
+
+    # Categorical out of allowed set
+    for col, allowed in VALID_VALUES.items():
+        bad = ~df[col].isin(allowed) & df[col].notna()
+        n_bad = int(bad.sum())
+        if n_bad:
+            rpt.dropped_reasons[f'invalid_categorical_{col}'] = n_bad
+        drop_mask |= bad
+
+    # Numeric out of range
+    for col, (lo, hi) in NUMERIC_RANGES.items():
+        as_num = pd.to_numeric(df[col], errors='coerce')
+        bad = as_num.notna() & ((as_num < lo) | (as_num > hi))
+        n_bad = int(bad.sum())
+        if n_bad:
+            rpt.dropped_reasons[f'out_of_range_{col}'] = n_bad
+        drop_mask |= bad
+
+    # Consistency: ExperienceYears <= Age - 18
+    age_num = pd.to_numeric(df['Age'], errors='coerce')
+    exp_num = pd.to_numeric(df['ExperienceYears'], errors='coerce')
+    consistency_bad = age_num.notna() & exp_num.notna() & (exp_num > (age_num - 18))
+    n_cb = int(consistency_bad.sum())
+    if n_cb:
+        rpt.dropped_reasons['consistency_experience_vs_age'] = n_cb
+    drop_mask |= consistency_bad
+
+    clean = df.loc[~drop_mask].copy()
     rpt.n_output = len(clean)
     rpt.n_dropped = rpt.n_input - rpt.n_output
     return clean, rpt

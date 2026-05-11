@@ -65,3 +65,55 @@ def test_investor_schema_missing_column_raises():
     df = _make_good_investor_df(5).drop(columns=['Age'])
     with pytest.raises(ValueError, match="Age"):
         validate_investor_data(df)
+
+
+def test_investor_drops_row_with_nan_in_feature():
+    from src.data_validation import validate_investor_data
+    df = _make_good_investor_df(5)
+    df.loc[2, 'Age'] = np.nan
+    clean, rpt = validate_investor_data(df)
+    assert rpt.n_input == 5
+    assert rpt.n_output == 4
+    assert rpt.n_dropped == 1
+    assert rpt.dropped_reasons.get('nan_in_feature') == 1
+
+
+def test_investor_drops_row_with_invalid_categorical():
+    from src.data_validation import validate_investor_data
+    df = _make_good_investor_df(5)
+    df.loc[1, 'Gender'] = 'Other'
+    clean, rpt = validate_investor_data(df)
+    assert rpt.n_dropped == 1
+    assert rpt.dropped_reasons.get('invalid_categorical_Gender') == 1
+
+
+def test_investor_drops_row_with_out_of_range_numeric():
+    from src.data_validation import validate_investor_data
+    df = _make_good_investor_df(5)
+    df.loc[0, 'Age'] = 5  # below range (18, 100)
+    df.loc[3, 'Income'] = -1000  # below range (0, 10M)
+    clean, rpt = validate_investor_data(df)
+    assert rpt.n_dropped == 2
+    assert rpt.dropped_reasons.get('out_of_range_Age') == 1
+    assert rpt.dropped_reasons.get('out_of_range_Income') == 1
+
+
+def test_investor_drops_row_with_consistency_violation():
+    from src.data_validation import validate_investor_data
+    df = _make_good_investor_df(5)
+    df.loc[2, 'Age'] = 25
+    df.loc[2, 'ExperienceYears'] = 20  # 25 - 18 = 7, so 20 violates
+    clean, rpt = validate_investor_data(df)
+    assert rpt.n_dropped == 1
+    assert rpt.dropped_reasons.get('consistency_experience_vs_age') == 1
+
+
+def test_investor_row_with_multiple_violations_dropped_once_counts_each():
+    from src.data_validation import validate_investor_data
+    df = _make_good_investor_df(3)
+    df.loc[1, 'Age'] = 5             # out of range
+    df.loc[1, 'Gender'] = 'Other'    # invalid categorical
+    clean, rpt = validate_investor_data(df)
+    assert rpt.n_dropped == 1                              # dropped once
+    assert rpt.dropped_reasons.get('out_of_range_Age') == 1
+    assert rpt.dropped_reasons.get('invalid_categorical_Gender') == 1
