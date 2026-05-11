@@ -117,3 +117,24 @@ def test_investor_row_with_multiple_violations_dropped_once_counts_each():
     assert rpt.n_dropped == 1                              # dropped once
     assert rpt.dropped_reasons.get('out_of_range_Age') == 1
     assert rpt.dropped_reasons.get('invalid_categorical_Gender') == 1
+
+
+def test_investor_duplicates_warn_only_not_dropped():
+    from src.data_validation import validate_investor_data
+    df = pd.concat([_make_good_investor_df(5), _make_good_investor_df(2)], ignore_index=True)
+    # rows 0-6 are all identical fixtures so there will be duplicates
+    clean, rpt = validate_investor_data(df)
+    assert rpt.n_dropped == 0
+    assert any("duplicate" in w.lower() for w in rpt.warnings)
+
+
+def test_investor_class_balance_warns_when_skewed():
+    from src.data_validation import validate_investor_data
+    # 80% High, 10% Medium, 10% Low — heavily skewed
+    df = pd.concat([
+        pd.DataFrame([_make_good_investor_row(RiskTolerance='High') for _ in range(8)]),
+        pd.DataFrame([_make_good_investor_row(RiskTolerance='Medium') for _ in range(1)]),
+        pd.DataFrame([_make_good_investor_row(RiskTolerance='Low') for _ in range(1)]),
+    ], ignore_index=True)
+    clean, rpt = validate_investor_data(df)
+    assert any("class balance" in w.lower() or "imbalance" in w.lower() for w in rpt.warnings)

@@ -149,6 +149,22 @@ def validate_investor_data(df: pd.DataFrame) -> tuple[pd.DataFrame, ValidationRe
     drop_mask |= consistency_bad
 
     clean = df.loc[~drop_mask].copy()
+
+    # Duplicates (warn only, don't drop)
+    n_dupes = int(df.duplicated().sum())
+    if n_dupes:
+        rpt.warnings.append(f"{n_dupes} duplicate rows detected (kept)")
+
+    # Class balance (warn only) — uses cleaned df
+    if 'RiskTolerance' in clean.columns and len(clean):
+        dist = clean['RiskTolerance'].value_counts(normalize=True) * 100
+        for cls in ['Low', 'Medium', 'High']:
+            pct = float(dist.get(cls, 0.0))
+            if pct < 25 or pct > 40:
+                rpt.warnings.append(
+                    f"Class balance off: RiskTolerance={cls} is {pct:.1f}% (target ~33%)"
+                )
+
     rpt.n_output = len(clean)
     rpt.n_dropped = rpt.n_input - rpt.n_output
     return clean, rpt
