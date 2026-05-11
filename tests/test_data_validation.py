@@ -280,3 +280,42 @@ def test_etf_floor_violation_multiple_classes():
     df = pd.DataFrame(rows)
     with pytest.raises(ValueError, match="equity"):
         validate_etf_data(df)
+
+
+# ---------------------------------------------------------------------------
+# inference.validate_input refactor smoke
+# ---------------------------------------------------------------------------
+def test_inference_validate_input_imports_from_validation_rules():
+    """After refactor, inference.py should not hold its own VALID_VALUES dict —
+    it must reference src.validation_rules.VALID_VALUES."""
+    import src.inference as inf
+    from src import validation_rules
+    # The constants live in validation_rules now
+    assert hasattr(validation_rules, 'VALID_VALUES')
+    assert hasattr(validation_rules, 'NUMERIC_RANGES')
+    # inference.py either imports them, or aliases them
+    src_text = open(inf.__file__).read()
+    assert 'from src.validation_rules' in src_text or 'from .validation_rules' in src_text
+
+
+def test_inference_validate_input_still_works():
+    """Behaviour-preserving refactor — same valid input passes, same invalid
+    input raises."""
+    from src.inference import validate_input
+    good = {
+        "age": 30, "Gender": "Male", "Education": "Bachelor",
+        "MaritalStatus": "Single", "HouseholdSize": 1,
+        "income": 80000, "InvestmentGoal": "Retirement",
+        "horizon": 30, "InvestmentCapital": 50000,
+        "risk_tolerance": "Medium", "FinancialInvolvement": "Medium",
+        "experience": 5,
+    }
+    validate_input(good)  # should not raise
+
+    bad_gender = dict(good); bad_gender['Gender'] = 'Other'
+    with pytest.raises(ValueError, match="Gender"):
+        validate_input(bad_gender)
+
+    bad_age = dict(good); bad_age['age'] = 5
+    with pytest.raises(ValueError, match="age"):
+        validate_input(bad_age)

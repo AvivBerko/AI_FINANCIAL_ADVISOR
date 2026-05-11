@@ -43,22 +43,30 @@ MODEL_DIR    = 'models'
 TRAINING_DIR = 'data/training'
 ETF_FILE     = 'data/raw/combined_etf_with_morning_star.csv'
 
-# Expected input feature columns (must match prepare_data.py)
+from src.validation_rules import (
+    VALID_VALUES as _CSV_VALID_VALUES,
+    NUMERIC_RANGES as _CSV_NUMERIC_RANGES,
+)
+
+# Inference dict uses lowercase keys for some numeric fields; map to CSV-canonical
+# names used by validation_rules.
 FEATURE_COLUMNS = [
     'age', 'Gender', 'Education', 'MaritalStatus', 'HouseholdSize',
     'income', 'InvestmentGoal', 'horizon', 'InvestmentCapital',
     'risk_tolerance', 'FinancialInvolvement', 'experience'
 ]
-
-# Valid values for each categorical field
-VALID_VALUES = {
-    'Gender':               ['Male', 'Female'],
-    'Education':            ['High school', 'Bachelor', 'Master'],
-    'MaritalStatus':        ['Single', 'Married', 'Divorced', 'Widowed'],
-    'InvestmentGoal':       ['Retirement', 'Home purchase', 'Child education', 'Other'],
-    'risk_tolerance':       ['Low', 'Medium', 'High'],
-    'FinancialInvolvement': ['Low', 'Medium', 'High'],
+_INFERENCE_TO_CSV = {
+    'age': 'Age',
+    'income': 'Income',
+    'horizon': 'InvestmentHorizon',
+    'risk_tolerance': 'RiskTolerance',
+    'experience': 'ExperienceYears',
 }
+def _to_csv(k): return _INFERENCE_TO_CSV.get(k, k)
+
+# Build inference-keyed lookups from the canonical CSV ones
+VALID_VALUES   = {k: _CSV_VALID_VALUES[_to_csv(k)]   for k in FEATURE_COLUMNS if _to_csv(k) in _CSV_VALID_VALUES}
+NUMERIC_RANGES = {k: _CSV_NUMERIC_RANGES[_to_csv(k)] for k in FEATURE_COLUMNS if _to_csv(k) in _CSV_NUMERIC_RANGES}
 
 
 # ---------------------------------------------------------------------------
@@ -119,15 +127,7 @@ def validate_input(user: dict) -> None:
                 f"Invalid value '{val}' for '{field}'. Must be one of: {valid}"
             )
 
-    numeric_checks = {
-        'age':               (18, 100),
-        'HouseholdSize':     (1, 10),
-        'income':            (0, 10_000_000),
-        'horizon':           (1, 50),
-        'InvestmentCapital': (0, 100_000_000),
-        'experience':        (0, 80),
-    }
-    for field, (lo, hi) in numeric_checks.items():
+    for field, (lo, hi) in NUMERIC_RANGES.items():
         val = user.get(field)
         if not (lo <= val <= hi):
             raise ValueError(f"'{field}' = {val} is out of range [{lo}, {hi}]")
