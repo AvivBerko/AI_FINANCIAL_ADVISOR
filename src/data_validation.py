@@ -277,6 +277,23 @@ def validate_etf_data(df: pd.DataFrame) -> tuple[pd.DataFrame, ValidationReport]
                 'source': source,
             })
 
+    # Asset class floor (raise if any class below its floor)
+    asset_counts = work['_asset_class'].value_counts().to_dict()
+    rpt.asset_class_counts = {
+        cls: int(asset_counts.get(cls, 0))
+        for cls in ['equity', 'bond', 'alternative']
+    }
+
+    deficient = [
+        f"{cls} has {rpt.asset_class_counts[cls]} ETFs (floor: {floor})"
+        for cls, floor in ASSET_CLASS_FLOORS.items()
+        if rpt.asset_class_counts[cls] < floor
+    ]
+    if deficient:
+        msg = "Asset class floor violation: " + "; ".join(deficient)
+        rpt.critical_issues.append(msg)
+        raise ValueError(msg)
+
     # Drop the helper column before returning
     work = work.drop(columns=['_asset_class'])
 

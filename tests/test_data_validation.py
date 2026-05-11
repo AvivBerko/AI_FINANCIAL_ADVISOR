@@ -195,7 +195,13 @@ def test_etf_drops_missing_fund_symbol():
 
 def test_etf_drops_missing_category():
     from src.data_validation import validate_etf_data
-    df = _make_good_etf_df()
+    # Build a df with extra equity rows so dropping 2 still meets the floor (5).
+    rows = (
+        [_make_good_etf_row(**{'Fund Symbol': f'E{i}', 'Category': 'Large Blend'})        for i in range(8)] +
+        [_make_good_etf_row(**{'Fund Symbol': f'B{i}', 'Category': 'Corporate Bond'})     for i in range(5)] +
+        [_make_good_etf_row(**{'Fund Symbol': 'GLD',   'Category': 'Gold'})]
+    )
+    df = pd.DataFrame(rows)
     df.loc[0, 'Category'] = ''   # empty
     df.loc[1, 'Category'] = None
     clean, rpt = validate_etf_data(df)
@@ -240,3 +246,37 @@ def test_etf_imputes_with_global_default_when_class_has_too_few_samples():
               and d['column'] == 'Assets Under Management (AUM)'][0]
     assert detail['source'] == 'global_default'
     assert detail['imputed'] == 1e9
+
+
+def test_etf_asset_class_counts_reported():
+    from src.data_validation import validate_etf_data
+    df = _make_good_etf_df()
+    clean, rpt = validate_etf_data(df)
+    assert rpt.asset_class_counts.get('equity') == 6
+    assert rpt.asset_class_counts.get('bond') == 5
+    assert rpt.asset_class_counts.get('alternative') == 1
+
+
+def test_etf_floor_violation_raises():
+    from src.data_validation import validate_etf_data
+    # 6 equity, 5 bond, 0 alternative -> alternative floor (1) violated
+    rows = (
+        [_make_good_etf_row(**{'Fund Symbol': f'E{i}', 'Category': 'Large Blend'})    for i in range(6)] +
+        [_make_good_etf_row(**{'Fund Symbol': f'B{i}', 'Category': 'Corporate Bond'}) for i in range(5)]
+    )
+    df = pd.DataFrame(rows)
+    with pytest.raises(ValueError, match="alternative"):
+        validate_etf_data(df)
+
+
+def test_etf_floor_violation_multiple_classes():
+    from src.data_validation import validate_etf_data
+    # 2 equity (below 5), 5 bond, 1 alternative
+    rows = (
+        [_make_good_etf_row(**{'Fund Symbol': f'E{i}', 'Category': 'Large Blend'})    for i in range(2)] +
+        [_make_good_etf_row(**{'Fund Symbol': f'B{i}', 'Category': 'Corporate Bond'}) for i in range(5)] +
+        [_make_good_etf_row(**{'Fund Symbol': 'GLD',   'Category': 'Gold'})]
+    )
+    df = pd.DataFrame(rows)
+    with pytest.raises(ValueError, match="equity"):
+        validate_etf_data(df)
