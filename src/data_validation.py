@@ -94,3 +94,26 @@ class ValidationReport:
             lines.append("")
 
         return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Investor validator
+# ---------------------------------------------------------------------------
+def validate_investor_data(df: pd.DataFrame) -> tuple[pd.DataFrame, ValidationReport]:
+    """
+    Returns (cleaned_df, report). Bad rows are DROPPED with reason logged.
+    Missing required columns RAISES ValueError.
+    """
+    rpt = ValidationReport(name="investor", n_input=len(df), n_output=0, n_dropped=0)
+
+    # Schema check
+    missing = [c for c in INVESTOR_FEATURE_COLUMNS if c not in df.columns]
+    if missing:
+        rpt.critical_issues.append(f"Missing columns: {missing}")
+        raise ValueError(f"Investor data missing required columns: {missing}")
+
+    # No row-level validation yet — placeholder, completed in Task 4.
+    clean = df.copy()
+    rpt.n_output = len(clean)
+    rpt.n_dropped = rpt.n_input - rpt.n_output
+    return clean, rpt
