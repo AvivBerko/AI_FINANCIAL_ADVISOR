@@ -319,3 +319,26 @@ def test_inference_validate_input_still_works():
     bad_age = dict(good); bad_age['age'] = 5
     with pytest.raises(ValueError, match="age"):
         validate_input(bad_age)
+
+
+# ---------------------------------------------------------------------------
+# Cross-check: the validator's local _map_to_asset_class must stay in sync
+# with allocations.get_category_mapping. If they drift, ETFs would be
+# imputed against medians for the wrong asset class at train time.
+# ---------------------------------------------------------------------------
+def test_map_to_asset_class_matches_allocations_get_category_mapping():
+    from src.data_validation import _map_to_asset_class
+    from src.allocations import get_category_mapping
+
+    sample_categories = [
+        'Large Blend', 'Large Growth', 'Mid-Cap Value', 'Small Blend',
+        'Corporate Bond', 'Government Bond', 'Long-Term Treasury',
+        'Real Estate', 'Gold', 'Commodities Broad Basket',
+        'Unknown Wacky Category',
+    ]
+    for cat in sample_categories:
+        assert _map_to_asset_class(cat) == get_category_mapping(cat), (
+            f"drift on '{cat}': data_validation says "
+            f"{_map_to_asset_class(cat)!r}, allocations says "
+            f"{get_category_mapping(cat)!r}"
+        )

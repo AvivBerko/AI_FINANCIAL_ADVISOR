@@ -8,7 +8,6 @@ Exposes:
 """
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -36,9 +35,12 @@ class ValidationReport:
     critical_issues:    list        = field(default_factory=list)
     asset_class_counts: dict        = field(default_factory=dict)   # ETF only
 
+    _TITLE_NAMES = {'etf': 'ETF', 'investor': 'Investor'}
+
     def to_markdown(self) -> str:
         ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        title = f"# {self.name.capitalize()} Data Validation Report"
+        title_word = self._TITLE_NAMES.get(self.name, self.name.capitalize())
+        title = f"# {title_word} Data Validation Report"
         pct = (self.n_dropped / self.n_input * 100) if self.n_input else 0.0
 
         lines = [
