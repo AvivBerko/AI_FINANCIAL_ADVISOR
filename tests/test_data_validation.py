@@ -138,3 +138,66 @@ def test_investor_class_balance_warns_when_skewed():
     ], ignore_index=True)
     clean, rpt = validate_investor_data(df)
     assert any("class balance" in w.lower() or "imbalance" in w.lower() for w in rpt.warnings)
+
+
+# ---------------------------------------------------------------------------
+# Fixtures for ETF tests
+# ---------------------------------------------------------------------------
+def _make_good_etf_row(**overrides):
+    row = {
+        'Fund Symbol': 'VOO',
+        'Category': 'Large Blend',
+        'Assets Under Management (AUM)': 1_000_000_000.0,
+        'custom_star_rating': 4.0,
+        'Volatility (Annual STD)': 0.18,
+    }
+    row.update(overrides)
+    return row
+
+
+def _make_good_etf_df():
+    """Returns 12 ETFs: 6 equity, 5 bond, 1 alternative — passes all floors."""
+    rows = (
+        [_make_good_etf_row(**{'Fund Symbol': f'E{i}', 'Category': 'Large Blend'})        for i in range(6)] +
+        [_make_good_etf_row(**{'Fund Symbol': f'B{i}', 'Category': 'Corporate Bond'})     for i in range(5)] +
+        [_make_good_etf_row(**{'Fund Symbol': 'GLD',   'Category': 'Gold'})]
+    )
+    return pd.DataFrame(rows)
+
+
+# ---------------------------------------------------------------------------
+# validate_etf_data
+# ---------------------------------------------------------------------------
+def test_etf_happy_path_keeps_all_rows():
+    from src.data_validation import validate_etf_data
+    df = _make_good_etf_df()
+    clean, rpt = validate_etf_data(df)
+    assert rpt.n_input == 12
+    assert rpt.n_output == 12
+    assert rpt.n_dropped == 0
+
+
+def test_etf_schema_missing_column_raises():
+    from src.data_validation import validate_etf_data
+    df = _make_good_etf_df().drop(columns=['Category'])
+    with pytest.raises(ValueError, match="Category"):
+        validate_etf_data(df)
+
+
+def test_etf_drops_missing_fund_symbol():
+    from src.data_validation import validate_etf_data
+    df = _make_good_etf_df()
+    df.loc[0, 'Fund Symbol'] = None
+    clean, rpt = validate_etf_data(df)
+    assert rpt.n_dropped == 1
+    assert rpt.dropped_reasons.get('missing_fund_symbol') == 1
+
+
+def test_etf_drops_missing_category():
+    from src.data_validation import validate_etf_data
+    df = _make_good_etf_df()
+    df.loc[0, 'Category'] = ''   # empty
+    df.loc[1, 'Category'] = None
+    clean, rpt = validate_etf_data(df)
+    assert rpt.n_dropped == 2
+    assert rpt.dropped_reasons.get('missing_category') == 2

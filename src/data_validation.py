@@ -168,3 +168,63 @@ def validate_investor_data(df: pd.DataFrame) -> tuple[pd.DataFrame, ValidationRe
     rpt.n_output = len(clean)
     rpt.n_dropped = rpt.n_input - rpt.n_output
     return clean, rpt
+
+
+# ---------------------------------------------------------------------------
+# ETF validator helpers
+# ---------------------------------------------------------------------------
+def _is_known_category(category) -> bool:
+    if not isinstance(category, str):
+        return False
+    cat = category.lower()
+    return any(k in cat for k in KNOWN_CATEGORY_KEYWORDS)
+
+
+def _map_to_asset_class(category) -> str:
+    """Same logic as allocations.get_category_mapping (kept local to avoid
+    circular concerns during validation)."""
+    cat = str(category).lower()
+    if any(x in cat for x in ['large', 'mid', 'small', 'growth', 'value', 'blend']):
+        return 'equity'
+    if any(x in cat for x in ['bond', 'corporate', 'treasury', 'government']):
+        return 'bond'
+    if any(x in cat for x in ['real estate', 'reit', 'commodities', 'gold']):
+        return 'alternative'
+    return 'equity'  # default
+
+
+def validate_etf_data(df: pd.DataFrame) -> tuple[pd.DataFrame, ValidationReport]:
+    """
+    Returns (cleaned_df, report). Rows missing Fund Symbol or Category are
+    dropped. Bad/missing AUM/star_rating/volatility are imputed with per-
+    asset-class median (or global default). Asset-class floor violations RAISE.
+    """
+    rpt = ValidationReport(name="etf", n_input=len(df), n_output=0, n_dropped=0)
+
+    # Schema check
+    missing = [c for c in ETF_REQUIRED_COLUMNS if c not in df.columns]
+    if missing:
+        rpt.critical_issues.append(f"Missing columns: {missing}")
+        raise ValueError(f"ETF data missing required columns: {missing}")
+
+    work = df.copy()
+
+    # Drop missing Fund Symbol
+    sym_bad = work['Fund Symbol'].isna() | (work['Fund Symbol'].astype(str).str.strip() == '')
+    n_sym_bad = int(sym_bad.sum())
+    if n_sym_bad:
+        rpt.dropped_reasons['missing_fund_symbol'] = n_sym_bad
+        work = work.loc[~sym_bad].copy()
+
+    # Drop missing Category
+    cat_bad = work['Category'].isna() | (work['Category'].astype(str).str.strip() == '')
+    n_cat_bad = int(cat_bad.sum())
+    if n_cat_bad:
+        rpt.dropped_reasons['missing_category'] = n_cat_bad
+        work = work.loc[~cat_bad].copy()
+
+    # Imputation + asset-class floor will be added in subsequent tasks.
+
+    rpt.n_output = len(work)
+    rpt.n_dropped = rpt.n_input - rpt.n_output
+    return work, rpt
