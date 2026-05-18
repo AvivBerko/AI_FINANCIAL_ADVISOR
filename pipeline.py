@@ -3,11 +3,12 @@ ETF Recommendation System - Main Pipeline
 ==========================================
 
 This script runs the complete end-to-end pipeline:
-1. Fetch ETF data (or use cached)
-2. Generate synthetic investor data
-3. Prepare training data
-4. Train ML models
-5. Evaluate and save results
+1.   Fetch ETF data (or use cached)
+1.5  Calculate Morningstar-style star ratings
+2.   Generate synthetic investor data
+3.   Prepare training data (includes data validation layer)
+4.   Train ML models
+5.   Summary
 
 Usage:
     python pipeline.py [--skip-fetch] [--skip-training]
@@ -48,7 +49,7 @@ def step_1_fetch_etf_data(skip=True):
     # Run the ETF fetcher script
     import subprocess
     result = subprocess.run(
-        ['python', 'src/etf_fetcher.py'],
+        [sys.executable, 'src/etf_fetcher.py'],
         capture_output=True,
         text=True
     )
@@ -117,7 +118,7 @@ def step_2_generate_investors():
     # Run the data generation script
     import subprocess
     result = subprocess.run(
-        ['python', 'src/data_generation.py'],
+        [sys.executable, 'src/data_generation.py'],
         capture_output=True,
         text=True
     )
@@ -131,52 +132,50 @@ def step_2_generate_investors():
 
 
 def step_3_prepare_training_data():
-    """Prepare training data (run Phase 2 notebook logic)"""
+    """Prepare training data via src/prepare_data.py (validates + feature engineers)."""
     print("\n🔧 STEP 3: Preparing Training Data")
     print("-" * 60)
-    
+
     # Check if training data already exists
-    import glob
-    training_files = glob.glob('data/training/X_train.csv')
-    if training_files:
+    if os.path.exists('data/training/X_train.csv'):
         print(f"✅ Training data already exists in data/training/")
         return
-    
-    print("⚠️  Training data not found. You need to run:")
-    print("   notebooks/phase2_data_preparation.ipynb")
-    print("\n   This notebook will:")
-    print("   - Load ETF data and investor data")
-    print("   - Create training/test splits")
-    print("   - Save to data/training/")
-    print("\n   You can run it with:")
-    print("   jupyter nbconvert --execute --to notebook notebooks/phase2_data_preparation.ipynb")
+
+    print("Running src/prepare_data.py (validation + feature engineering)...")
+
+    import subprocess
+    # Stream output so the user sees validation reports in real time.
+    result = subprocess.run([sys.executable, 'src/prepare_data.py'])
+    if result.returncode == 0:
+        print("✅ Training data prepared")
+    else:
+        raise Exception("src/prepare_data.py failed")
 
 
 def step_4_train_models(skip=False):
-    """Train ML models (run Phase 3 notebook logic)"""
+    """Train ML models via src/train_models.py."""
     print("\n🤖 STEP 4: Training ML Models")
     print("-" * 60)
-    
+
     if skip:
         print("⏭️  Skipped (using existing models)")
         return
-    
+
     # Check if models already exist
     import glob
     model_files = glob.glob('models/*.pkl')
     if model_files:
         print(f"✅ Models already exist in models/ ({len(model_files)} files)")
         return
-    
-    print("⚠️  Models not found. You need to run:")
-    print("   notebooks/phase3_model_training.ipynb")
-    print("\n   This notebook will:")
-    print("   - Load training data from data/training/")
-    print("   - Train multiple ML models")
-    print("   - Save models to models/")
-    print("   - Generate evaluation reports")
-    print("\n   You can run it with:")
-    print("   jupyter nbconvert --execute --to notebook notebooks/phase3_model_training.ipynb")
+
+    print("Running src/train_models.py (this may take a few minutes)...")
+
+    import subprocess
+    result = subprocess.run([sys.executable, 'src/train_models.py'])
+    if result.returncode == 0:
+        print("✅ Models trained and saved to models/")
+    else:
+        raise Exception("src/train_models.py failed")
 
 
 def step_5_summary():
@@ -185,18 +184,19 @@ def step_5_summary():
     print("✅ PIPELINE COMPLETE!")
     print("=" * 60)
     
-    print("\n📁 Generated Files:") 
+    print("\n📁 Generated Files:")
     print("   - data/raw/combined_etf_with_morning_star.csv")
     print("   - data/processed/synthetic_investor_data_*.csv")
-    print("   - data/training/X_train.csv, y_train_*.csv")
-    print("   - models/*.pkl")
+    print("   - data/training/X_train.csv, y_train_*.csv, preprocessor.pkl")
+    print("   - data/validation_reports/etf_<ts>.md, investor_<ts>.md")
+    print("   - models/*.pkl, models/label_map.json")
     print("   - evaluation_reports/*.png, *.json")
-    
+
     print("\n🎯 Next Steps:")
-    print("   1. Run notebooks/phase2_data_preparation.ipynb to create training data")
-    print("   2. Run notebooks/phase3_model_training.ipynb to train models")
-    print("   3. Review evaluation_reports/model_metrics.json")
-    print("   4. Check evaluation_reports/*.png for visualizations")
+    print("   1. Review data/validation_reports/ for data-quality notes")
+    print("   2. Review evaluation_reports/model_metrics.json for model performance")
+    print("   3. Try a recommendation: venv/bin/python src/inference.py")
+    print("   4. Or launch the web UI:    venv/bin/streamlit run app.py")
     
     print(f"\nCompleted at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 60)
