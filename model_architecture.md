@@ -38,7 +38,7 @@ The system uses a **Parallel Ensemble** architecture. Unlike a sequential chain 
 ┌──────────────────┐┌──────────────────┐┌──────────────────┐
 │ PREDICTION 1     ││ PREDICTION 2     ││ PREDICTION 3     │
 │ Risk Profile:    ││ Equity: 70%      ││ Counts Vector:   │
-│ "Aggressive"     ││ Bond:   25%      ││ [5, 3, 2]        │
+│ "Aggressive"     ││ Bond:   25%      ││ 10 etfs in total       │
 │                  ││        │         ││                  │
 │                  ││        ▼         ││                  │
 │                  ││ Alt = 100-(E+B)  ││                  │

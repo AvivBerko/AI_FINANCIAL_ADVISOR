@@ -55,7 +55,7 @@ This is a **Machine Learning-based Financial Planning System** that recommends p
                            ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                   PHASE 3: Model Training                    │
-│  • Train 3 Random Forest models                              │
+│  • Train 3 models                              │
 │  • Evaluate performance (accuracy, MAE, R²)                  │
 │  • Output: *.pkl models in models/                           │
 └──────────────────────────┬──────────────────────────────────┘
