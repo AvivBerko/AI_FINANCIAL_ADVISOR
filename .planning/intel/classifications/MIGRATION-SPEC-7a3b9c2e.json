@@ -1,0 +1,26 @@
+{
+  "source_path": "/Users/avivberkovich/Documents/AI_FINANCIAL_ADVISOR/docs/MIGRATION-SPEC.md",
+  "type": "PRD",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "AI-Driven Portfolio Advisor — Migration Specification",
+  "summary": "Migration plan from Streamlit prototype to a Next.js + Supabase frontend with a FastAPI Python ML backend, defining data model, LLM tool contract, and 5-phase execution plan.",
+  "scope": [
+    "Next.js frontend orchestrator",
+    "Supabase PostgreSQL database",
+    "FastAPI Python financial backend",
+    "12 investor profile fields",
+    "4 database tables (profiles, portfolios, portfolio_history, chat_messages)",
+    "Vercel AI SDK LLM chat layer",
+    "adjust_allocation tool",
+    "update_investor_profile tool",
+    "Shadcn multi-step onboarding form",
+    "Real-time financial dashboard",
+    "Conversational fine-tuning drawer",
+    "5-phase execution plan"
+  ],
+  "cross_refs": [],
+  "locked": false,
+  "precedence": 2,
+  "notes": ""
+}

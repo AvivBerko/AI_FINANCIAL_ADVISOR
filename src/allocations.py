@@ -244,6 +244,109 @@ def assign_portfolio_numeric_aum(investor_row, etf_by_class):
 
 
 # =============================================================================
+# ADDITIVE: assign_portfolio_with_metadata
+# =============================================================================
+# Same selection algorithm as `assign_portfolio_numeric_aum` but also returns
+# per-ticker rationale (aum_rank within the candidate pool at pick time, the
+# normalized weight used by np.random.choice, category, star_rating). Backs
+# /api/explain.
+#
+# Does NOT replace the original function — the training pipeline keeps using
+# `assign_portfolio_numeric_aum` unchanged.
+# =============================================================================
+def assign_portfolio_with_metadata(investor_row, etf_by_class):
+    """Returns (portfolio, metadata).
+
+    portfolio : {asset_class: [tickers]}  (same shape as assign_portfolio_numeric_aum)
+    metadata  : {ticker: {asset_class, aum_rank, pick_probability, category,
+                           star_rating, candidate_pool_size}}
+    """
+    portfolio = {}
+    metadata = {}
+    asset_mapping = {
+        'equity': 'num_equity_etfs',
+        'bond': 'num_bond_etfs',
+        'alternative': 'num_alt_etfs'
+    }
+
+    for asset_class, n_etfs_key in asset_mapping.items():
+        full_df = etf_by_class.get(asset_class)
+        if full_df is None or len(full_df) == 0:
+            continue
+
+        candidate_df = full_df.copy()
+        n_slots = int(investor_row.get(n_etfs_key, 0))
+        selected_tickers = []
+
+        for _ in range(n_slots):
+            if len(candidate_df) == 0:
+                break
+
+            try:
+                max_aum = candidate_df['AUM'].max()
+                aum_power = np.power(candidate_df['AUM'] / max_aum, 1.5)
+
+                if asset_class == 'equity':
+                    vol = candidate_df['volatility'] + 0.01
+                    quality = candidate_df['star_rating'] / vol
+                else:
+                    quality = candidate_df['star_rating']
+
+                weights = aum_power * quality
+                if weights.sum() == 0:
+                    weights_norm = None
+                    prob_used = None
+                else:
+                    weights_norm = (weights / weights.sum()).values
+                    prob_used = weights_norm
+
+                pool_size = len(candidate_df)
+                # AUM rank within current candidate pool (1 = largest)
+                aum_ranks = candidate_df['AUM'].rank(ascending=False, method='min').astype(int)
+
+                picked_symbol = np.random.choice(candidate_df['symbol'].values, p=prob_used)
+                picked_idx = candidate_df.index[candidate_df['symbol'] == picked_symbol][0]
+                metadata[str(picked_symbol)] = {
+                    'asset_class': asset_class,
+                    'aum_rank': int(aum_ranks.loc[picked_idx]),
+                    'pick_probability': (
+                        float(prob_used[candidate_df['symbol'].values.tolist().index(picked_symbol)])
+                        if prob_used is not None else None
+                    ),
+                    'category': str(candidate_df.loc[picked_idx, 'category'])
+                        if 'category' in candidate_df.columns else None,
+                    'star_rating': float(candidate_df.loc[picked_idx, 'star_rating'])
+                        if 'star_rating' in candidate_df.columns else None,
+                    'candidate_pool_size': pool_size,
+                }
+                selected_tickers.append(picked_symbol)
+
+                candidate_df = candidate_df[candidate_df['symbol'] != picked_symbol]
+                for group in CONFLICT_GROUPS:
+                    if picked_symbol in group:
+                        siblings_to_ban = [s for s in group if s != picked_symbol]
+                        candidate_df = candidate_df[~candidate_df['symbol'].isin(siblings_to_ban)]
+
+            except Exception:
+                if len(candidate_df) > 0:
+                    picked = np.random.choice(candidate_df['symbol'].values)
+                    selected_tickers.append(picked)
+                    metadata[str(picked)] = {
+                        'asset_class': asset_class,
+                        'aum_rank': None,
+                        'pick_probability': None,
+                        'category': None,
+                        'star_rating': None,
+                        'candidate_pool_size': len(candidate_df),
+                    }
+                    candidate_df = candidate_df[candidate_df['symbol'] != picked]
+
+        portfolio[asset_class] = selected_tickers
+
+    return portfolio, metadata
+
+
+# =============================================================================
 # MAIN EXECUTOR (Called by main.py)
 # =============================================================================
 
