@@ -9,5 +9,5 @@
     "1": "Conservative",
     "2": "Moderate"
   },
-  "winner": "Random Forest"
+  "winner": "TabPFN"
 }

@@ -53,3 +53,6 @@ Thumbs.db
 !data/.gitkeep
 !models/.gitkeep
 !evaluation_reports/.gitkeep
+
+# Claude Code local config
+.claude/

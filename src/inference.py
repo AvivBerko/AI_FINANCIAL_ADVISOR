@@ -171,8 +171,8 @@ def recommend(user: dict) -> dict:
 
     raw_pred = classifier.predict(X_processed)
 
-    # XGBoost and MLP were trained on integer-encoded labels
-    if winner in ('XGBoost', 'MLP'):
+    # XGBoost, MLP, and TabPFN were trained on integer-encoded labels
+    if winner in ('XGBoost', 'MLP', 'TabPFN'):
         risk_profile = inv_label_map[str(raw_pred[0])]
     else:
         risk_profile = raw_pred[0]
