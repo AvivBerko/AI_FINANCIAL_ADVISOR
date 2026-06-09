@@ -208,9 +208,11 @@ def recommend(user: dict) -> dict:
     total_pred = count_regressor.predict(X_processed)[0]
     total_etfs = int(np.clip(round(total_pred), 7, 13))
 
-    num_equity = get_num_etfs('Equity',      risk_profile)
-    num_bond   = get_num_etfs('Bond',        risk_profile)
-    num_alt    = get_num_etfs('Alternative', risk_profile)
+    _cap = user.get('InvestmentCapital')
+    _exp = user.get('experience')
+    num_equity = get_num_etfs('Equity',      risk_profile, _cap, _exp)
+    num_bond   = get_num_etfs('Bond',        risk_profile, _cap, _exp)
+    num_alt    = get_num_etfs('Alternative', risk_profile, _cap, _exp)
 
     etf_counts = {
         'equity':      num_equity,

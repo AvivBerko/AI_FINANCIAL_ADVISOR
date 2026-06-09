@@ -53,9 +53,17 @@ def get_profile_probabilities(investor):
     risk_map = {'High': [0.7, 0.2, 0.1], 'Medium': [0.2, 0.6, 0.2], 'Low': [0.1, 0.3, 0.6]}
     risk_probs = risk_map.get(risk_tol, [0.33, 0.33, 0.33])
 
-    # Income mapping
+    # Income mapping — income arrives numeric from data_generation, so bucket it
+    # into High/Medium/Low before the lookup (a bare numeric key always missed,
+    # silently flattening this factor to uniform).
     income_map = {'High': [0.6, 0.3, 0.1], 'Medium': [0.3, 0.5, 0.2], 'Low': [0.2, 0.4, 0.4]}
-    income_probs = income_map.get(income, [0.33, 0.33, 0.33])
+    if isinstance(income, str):
+        income_probs = income_map.get(income, [0.33, 0.33, 0.33])
+    elif pd.isna(income):
+        income_probs = [0.33, 0.33, 0.33]
+    else:
+        income_tier = 'High' if income >= 100000 else 'Medium' if income >= 50000 else 'Low'
+        income_probs = income_map[income_tier]
 
     # Combine
     exp_factor = min(1.0, max(0.5, 1.0 - experience / 50)) if pd.notna(experience) else 1.0
@@ -110,17 +118,51 @@ def get_allocation_mix(profile):
     }
 
 
-def get_num_etfs(asset_class, profile):
-    """Determine how many ETFs per asset class."""
+# ETF-count label noise. Previously each per-class count was a pure
+# np.random.choice almost INDEPENDENT of any investor feature, so total_etfs was
+# essentially random and Stage 3 could not learn it (R^2 ~0.18 — already near the
+# ceiling of a random target). The counts below are now a DETERMINISTIC function of
+# portfolio capital (primary driver), risk profile (composition), and experience,
+# plus a small ±1 jitter so identical investors are not perfectly identical (which
+# would overfit Stage 3 to R^2 ~1.0, the same trap the classifier fell into).
+# Tune ETF_COUNT_NOISE_P (probability each sleeve gets a ±1 nudge):
+#   0.00 -> fully deterministic   (R^2 -> ~1.0, overfit)
+#   0.25 -> light noise           (target R^2 ~0.7-0.85)
+#   0.60+-> heavy noise           (back toward a near-random target)
+ETF_COUNT_NOISE_P = 0.25
+_etf_rng = np.random.default_rng(123)
+
+
+def get_num_etfs(asset_class, profile, capital=None, experience=None):
+    """Number of ETFs per asset class, driven by investor features (+ light noise).
+
+    capital / experience are optional for backwards compatibility; when omitted the
+    count falls back to the profile-only midpoint (no capital/experience signal).
+    """
+    cap = capital if (capital is not None and pd.notna(capital)) else 80_000
+    if   cap >= 500_000: cap_level = 4
+    elif cap >= 200_000: cap_level = 3
+    elif cap >=  80_000: cap_level = 2
+    elif cap >=  30_000: cap_level = 1
+    else:                cap_level = 0
+
+    exp = experience if (experience is not None and pd.notna(experience)) else 0
+    exp_bonus = 1 if exp >= 15 else 0   # seasoned investors hold a touch more
+
     if asset_class == 'Equity':
-        return np.random.choice([4, 5, 6], p=[0.2, 0.6, 0.2])
+        base = {'Aggressive': 4, 'Moderate': 3, 'Conservative': 2}.get(profile, 3)
+        count = base + cap_level + exp_bonus          # bigger, more aggressive -> more equity sleeves
     elif asset_class == 'Bond':
-        if profile == 'Aggressive':
-            return np.random.choice([2, 3], p=[0.6, 0.4])
-        else:
-            return np.random.choice([3, 4, 5], p=[0.3, 0.4, 0.3])
+        base = {'Aggressive': 2, 'Moderate': 3, 'Conservative': 4}.get(profile, 3)
+        count = base + cap_level // 2                 # bonds scale slower with capital
     else:  # Alternative
-        return 1 if np.random.random() > 0.3 else 2
+        count = 1 + (1 if cap_level >= 3 else 0)      # only large portfolios add a 2nd alt
+
+    # Light, tunable noise: with prob ETF_COUNT_NOISE_P nudge the count by ±1.
+    if _etf_rng.random() < ETF_COUNT_NOISE_P:
+        count += _etf_rng.choice([-1, 1])
+
+    return int(max(1, count))
 
 
 def get_category_mapping(category):
@@ -400,16 +442,40 @@ def run_allocations_pipeline(etf_df, investors_df):
 
     # 3. Run Logic Pipeline
     inv_df['profile_probs'] = inv_df.apply(get_profile_probabilities, axis=1)
-    inv_df['risk_profile'] = inv_df['profile_probs'].apply(
-        lambda p: np.random.choice(['Aggressive', 'Moderate', 'Conservative'], p=list(p.values()))
-    )
+    # Label = the investor's risk profile, derived from get_profile_probabilities().
+    # Two extremes both fail:
+    #   - argmax(p): label is a deterministic function of the features, so the
+    #     classifier just re-derives the scoring rule -> ~99% test accuracy (leakage).
+    #   - np.random.choice(p): identical investors scatter across classes, capping
+    #     any model at the ~45% Bayes ceiling (too much noise).
+    # Middle ground: TEMPERATURE-SHARPENED sampling. Raise the probabilities to
+    # 1/LABEL_TEMP, renormalize, then sample. A low temperature pushes clear-cut
+    # investors to their dominant class while leaving genuinely BORDERLINE investors
+    # (close top-2 probabilities) free to flip -> realistic, minor label noise.
+    #   LABEL_TEMP -> 0    : deterministic argmax  (~99% acc, overfit)
+    #   LABEL_TEMP ~ 0.35  : minor noise           (target ~80-88% acc)
+    #   LABEL_TEMP -> 1    : raw sampling           (~45% ceiling)
+    LABEL_TEMP = 0.14
+    _rng = np.random.default_rng(42)
+    _classes = ['Aggressive', 'Moderate', 'Conservative']
+
+    def _sample_label(p):
+        probs = np.array([p[c] for c in _classes], dtype=float)
+        sharp = probs ** (1.0 / LABEL_TEMP)
+        sharp = sharp / sharp.sum()
+        return _rng.choice(_classes, p=sharp)
+
+    inv_df['risk_profile'] = inv_df['profile_probs'].apply(_sample_label)
 
     # --- CONTINUOUS ALLOCATION APPLIED HERE ---
     inv_df['allocation'] = inv_df['risk_profile'].apply(get_allocation_mix)
 
-    inv_df['num_equity_etfs'] = inv_df.apply(lambda r: get_num_etfs('Equity', r['risk_profile']), axis=1)
-    inv_df['num_bond_etfs'] = inv_df.apply(lambda r: get_num_etfs('Bond', r['risk_profile']), axis=1)
-    inv_df['num_alt_etfs'] = inv_df.apply(lambda r: get_num_etfs('Alternative', r['risk_profile']), axis=1)
+    inv_df['num_equity_etfs'] = inv_df.apply(
+        lambda r: get_num_etfs('Equity', r['risk_profile'], r.get('InvestmentCapital'), r.get('experience')), axis=1)
+    inv_df['num_bond_etfs'] = inv_df.apply(
+        lambda r: get_num_etfs('Bond', r['risk_profile'], r.get('InvestmentCapital'), r.get('experience')), axis=1)
+    inv_df['num_alt_etfs'] = inv_df.apply(
+        lambda r: get_num_etfs('Alternative', r['risk_profile'], r.get('InvestmentCapital'), r.get('experience')), axis=1)
     inv_df['total_etfs'] = inv_df['num_equity_etfs'] + inv_df['num_bond_etfs'] + inv_df['num_alt_etfs']
 
     # 4. Assign Portfolios
