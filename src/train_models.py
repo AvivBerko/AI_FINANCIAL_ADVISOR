@@ -1,25 +1,24 @@
 """
-Phase 3: Production Model Training (V2 Winners)
+Phase 3: Production Model Training (V3 Winners)
 ================================================
 Trains and saves the three production models with the hyperparameters
-selected by the V2 evaluation (see
-`evaluation_reports/AI Financial Advisor - Model Evaluation Results V2 …csv`).
+selected by the V3 evaluation (see model_winners.md).
 Algorithm comparison / hyperparameter search live in the
 `notebooks/phase3*_*_experiments*.ipynb` notebooks — this script only
 fits the chosen winners so the production pipeline is reproducible.
 
-Winners (from V2 evaluation):
+Winners (from V3 evaluation, data generated with LABEL_TEMP=0.14, ETF_COUNT_NOISE_P=0.25):
   Stage 1 — Risk Profile (3-class):
-        Best:        TabPFN v8.0.3   (Test Acc 0.449, Macro F1 0.4434)
-        Fallback:    Random Forest   (Test Acc 0.436, Macro F1 0.4307,
+        Best:        TabPFN          (Test Acc 0.8000, Macro F1 0.8004)
+        Fallback:    Random Forest   (Test Acc 0.7990, Macro F1 0.7976,
                      params: max_depth=5, min_samples_split=2, n_estimators=200)
         TabPFN requires a one-time license/API token. Set TABPFN_TOKEN in
         your environment (see https://ux.priorlabs.ai/account) to enable it;
         otherwise the script falls back to the Random Forest winner.
-  Stage 2 — Allocation (multi-output regression): GradientBoosting
-             (learning_rate=0.05, max_depth=3, n_estimators=100; MAE 0.1476)
-  Stage 3 — ETF Count (regression): RandomForest
-             (max_depth=5, min_samples_split=10, n_estimators=1000; MAE 1.035)
+  Stage 2 — Allocation (multi-output regression): Random Forest
+             (n_estimators=1000, max_depth=10, min_samples_split=20; MAE 0.0760)
+  Stage 3 — ETF Count (regression): Random Forest
+             (n_estimators=1000, max_depth=5, min_samples_split=2; MAE 0.5729)
 
 Run from project root:
     venv/bin/python src/train_models.py
@@ -37,8 +36,7 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from sklearn.ensemble import (GradientBoostingRegressor, RandomForestClassifier,
-                              RandomForestRegressor)
+from sklearn.ensemble import (RandomForestClassifier, RandomForestRegressor)
 from sklearn.metrics import (accuracy_score, mean_absolute_error,
                               precision_recall_fscore_support, r2_score)
 from sklearn.multioutput import MultiOutputRegressor
@@ -145,19 +143,20 @@ print(f"  Saved → {MODEL_DIR}/risk_profile_classifier.pkl")
 
 
 # ===========================================================================
-# STAGE 2 — Allocation Regression (Gradient Boosting, V2 hyperparams)
+# STAGE 2 — Allocation Regression (Random Forest, V3 hyperparams)
 # ===========================================================================
 print("\n" + "=" * 60)
-print("STAGE 2: Allocation Regression (Gradient Boosting)")
+print("STAGE 2: Allocation Regression (Random Forest)")
 print("=" * 60)
-print("  Hyperparameters: learning_rate=0.05, max_depth=3, n_estimators=100")
+print("  Hyperparameters: n_estimators=1000, max_depth=10, min_samples_split=20")
 
 stage2 = MultiOutputRegressor(
-    GradientBoostingRegressor(
-        learning_rate=0.05,
-        max_depth=3,
-        n_estimators=100,
+    RandomForestRegressor(
+        n_estimators=1000,
+        max_depth=10,
+        min_samples_split=20,
         random_state=42,
+        n_jobs=-1,
     )
 )
 stage2.fit(X_train, y2_train)
@@ -175,17 +174,17 @@ print(f"  Saved → {MODEL_DIR}/allocation_regressor.pkl")
 
 
 # ===========================================================================
-# STAGE 3 — ETF Count Regression (Random Forest, V2 hyperparams)
+# STAGE 3 — ETF Count Regression (Random Forest, V3 hyperparams)
 # ===========================================================================
 print("\n" + "=" * 60)
 print("STAGE 3: ETF Count Regression (Random Forest)")
 print("=" * 60)
-print("  Hyperparameters: max_depth=5, min_samples_split=10, n_estimators=1000")
+print("  Hyperparameters: n_estimators=1000, max_depth=5, min_samples_split=2")
 
 stage3 = RandomForestRegressor(
-    max_depth=5,
-    min_samples_split=10,
     n_estimators=1000,
+    max_depth=5,
+    min_samples_split=2,
     random_state=42,
     n_jobs=-1,
 )
@@ -216,8 +215,8 @@ metrics = {
         'macro_f1':       round(float(s1_f1),        4),
     },
     'stage_2_allocation': {
-        'winner':          'Gradient Boosting',
-        'hyperparameters': {'learning_rate': 0.05, 'max_depth': 3, 'n_estimators': 100},
+        'winner':          'Random Forest',
+        'hyperparameters': {'n_estimators': 1000, 'max_depth': 10, 'min_samples_split': 20},
         'equity_mae':      round(float(s2_mae_eq),   4),
         'bond_mae':        round(float(s2_mae_bd),   4),
         'avg_mae':         round(float(s2_avg_mae),  4),
@@ -226,7 +225,7 @@ metrics = {
     },
     'stage_3_etf_count': {
         'winner':              'Random Forest',
-        'hyperparameters':     {'max_depth': 5, 'min_samples_split': 10, 'n_estimators': 1000},
+        'hyperparameters':     {'n_estimators': 1000, 'max_depth': 5, 'min_samples_split': 2},
         'mae':                 round(float(s3_mae),     4),
         'mae_rounded':         round(float(s3_mae_rnd), 4),
         'r2':                  round(float(s3_r2),      4),
