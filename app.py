@@ -319,7 +319,7 @@ with right:
     st.metric("Alternatives", f"{alloc['alt_pct']*100:.1f}%",
               delta=f"{(alloc['alt_pct'] - ml_alloc['alt_pct'])*100:+.1f}pp"
               if st.session_state["allocation_overridden"] else None)
-    st.metric("Total ETFs",   st.session_state["ml_result"]["total_etfs"])
+    st.metric("Total ETFs",   sum(len(tickers) for tickers in portfolio.values()))
 
 # ETF breakdown
 st.markdown("#### Portfolio ETFs")
