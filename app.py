@@ -14,6 +14,7 @@ import plotly.graph_objects as go
 from src.inference import recommend
 from src.llm import (
     apply_adjust_allocation,
+    apply_set_allocation,
     chat,
     get_initial_explanation,
     get_tool_followup,
@@ -482,6 +483,23 @@ if prompt := st.chat_input("Ask me anything about your portfolio..."):
                 equity_delta=args["equity_delta"],
                 bond_delta=args["bond_delta"],
                 alt_delta=args["alt_delta"],
+            )
+            st.session_state["current_allocation"]    = new_alloc
+            st.session_state["allocation_overridden"] = True
+
+            tool_result = (
+                f"Allocation updated. "
+                f"Equity: {new_alloc['equity_pct']*100:.1f}%, "
+                f"Bonds: {new_alloc['bond_pct']*100:.1f}%, "
+                f"Alternatives: {new_alloc['alt_pct']*100:.1f}%. "
+                f"Reason: {args['reason']}"
+            )
+
+        elif tool_call["name"] == "set_allocation":
+            new_alloc = apply_set_allocation(
+                st.session_state["current_allocation"],
+                asset_class=args["asset_class"],
+                target_pct=args["target_pct"],
             )
             st.session_state["current_allocation"]    = new_alloc
             st.session_state["allocation_overridden"] = True

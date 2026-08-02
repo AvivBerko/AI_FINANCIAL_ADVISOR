@@ -5,8 +5,9 @@ Provides:
   - Initial portfolio explanation (called once after ML pipeline runs)
   - Ongoing chat with tool-calling support for portfolio adjustments
 
-Two tools:
+Three tools:
   adjust_allocation      — apply signed deltas to equity/bond/alt weights (nuance requests)
+  set_allocation         — pin one asset class to an exact target percent (explicit requests)
   update_investor_profile — update form fields and re-run full ML pipeline (factual corrections)
 """
 
@@ -53,6 +54,39 @@ TOOLS = [
                     },
                 },
                 "required": ["equity_delta", "bond_delta", "alt_delta", "reason"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_allocation",
+            "description": (
+                "Pins one asset class to an exact target percentage of the portfolio. Use "
+                "this when the user names a specific number for one class (e.g., 'make "
+                "bonds 20%', 'set equity to 60%', 'I want exactly 15% in alternatives'). "
+                "The other two classes absorb the remainder proportionally to their "
+                "current relative weights. Do NOT use this for vague/relative requests "
+                "('a bit more', 'reduce slightly') — use adjust_allocation for those."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "asset_class": {
+                        "type": "string",
+                        "enum": ["equity", "bond", "alt"],
+                        "description": "Which asset class the target percentage applies to.",
+                    },
+                    "target_pct": {
+                        "type": "number",
+                        "description": "Target weight as a fraction, e.g. 0.20 means 20%.",
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": "Brief human-readable reason for the adjustment, shown to the user.",
+                    },
+                },
+                "required": ["asset_class", "target_pct", "reason"],
             },
         },
     },
@@ -129,6 +163,8 @@ You explain, justify, and refine this portfolio in conversation with the investo
 - Be concise and professional. Avoid jargon without explanation.
 - When the user wants to tweak risk or weights softly ("a bit more", "slightly less", \
 "I want to be a bit more aggressive"), call `adjust_allocation` with deltas that roughly sum to 0.
+- When the user names an exact target percentage for one asset class ("make bonds 20%", \
+"set equity to 60%"), call `set_allocation` with that class and target_pct.
 - When the user explicitly corrects a profile fact ("my horizon is 30 years, not 10", \
 "change my risk tolerance to High"), call `update_investor_profile`.
 - Never fabricate financial data or performance figures. Only reference the ETFs and \
@@ -262,3 +298,31 @@ def apply_adjust_allocation(
         "bond_pct":   round(bd  / total, 4),
         "alt_pct":    round(alt / total, 4),
     }
+
+
+def apply_set_allocation(
+    current_allocation: dict,
+    asset_class: str,
+    target_pct: float,
+) -> dict:
+    """Pin one asset class to an exact target; the other two split the remainder
+    proportionally to their current relative weights (even split if both are 0)."""
+    keys = {"equity": "equity_pct", "bond": "bond_pct", "alt": "alt_pct"}
+    target_key = keys[asset_class]
+    other_keys = [k for k in keys.values() if k != target_key]
+
+    target = min(1.0, max(0.0, target_pct))
+    remaining = 1.0 - target
+
+    other_sum = sum(current_allocation[k] for k in other_keys)
+    if other_sum <= 0:
+        split = {k: remaining / 2 for k in other_keys}
+    else:
+        split = {
+            k: remaining * (current_allocation[k] / other_sum)
+            for k in other_keys
+        }
+
+    result = {target_key: target, **split}
+    total = sum(result.values())
+    return {k: round(v / total, 4) for k, v in result.items()}
